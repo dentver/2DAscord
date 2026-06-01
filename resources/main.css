@@ -1,0 +1,136 @@
+QMainWindow {
+    background-color: #1e1f22;
+}
+
+/* ================================= */
+/* ЛЕВАЯ ПАНЕЛЬ */
+/* ================================= */
+
+QWidget#leftPanel {
+    background-color: #18191c;
+    border-radius: 12px;
+}
+
+/* ================================= */
+/* ПРАВАЯ ПАНЕЛЬ */
+/* ================================= */
+
+QWidget#rightPanel {
+    background-color: #313338;
+    border-radius: 12px;
+}
+
+/* ================================= */
+/* КАРТОЧКИ */
+/* ================================= */
+
+QFrame#card {
+    background-color: #2b2d31;
+    border: 1px solid #3f4147;
+    border-radius: 10px;
+}
+
+/* ================================= */
+/* ЗАГОЛОВКИ */
+/* ================================= */
+
+QLabel {
+    color: #dbdee1;
+}
+
+QLabel#sectionTitle {
+    color: white;
+    font-size: 14px;
+    font-weight: bold;
+    padding-bottom: 5px;
+}
+
+/* ================================= */
+/* КНОПКИ */
+/* ================================= */
+
+QPushButton {
+    background-color: #5865f2;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 8px;
+    font-weight: bold;
+}
+
+QPushButton:hover {
+    background-color: #6773f4;
+}
+
+QPushButton:pressed {
+    background-color: #4752c4;
+}
+
+QPushButton:checked {
+    background-color: #23a55a;
+}
+
+/* ================================= */
+/* ПОЛЯ ВВОДА */
+/* ================================= */
+
+QLineEdit {
+    background-color: #1e1f22;
+    color: white;
+    border: 1px solid #3f4147;
+    border-radius: 8px;
+    padding: 8px;
+}
+
+/* ================================= */
+/* ЧАТ */
+/* ================================= */
+
+QTextEdit {
+    background-color: #2b2d31;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 10px;
+}
+
+/* ================================= */
+/* СПИСОК УЧАСТНИКОВ */
+/* ================================= */
+
+QListWidget {
+    background-color: transparent;
+    color: white;
+    border: none;
+}
+
+QListWidget::item {
+    padding: 6px;
+    border-radius: 6px;
+}
+
+QListWidget::item:selected {
+    background-color: #404249;
+}
+
+/* ================================= */
+/* SPLITTER */
+/* ================================= */
+
+QSplitter::handle {
+    background-color: #202225;
+}
+
+QPushButton#avatarButton {
+    background-color: #404249;
+}
+
+QPushButton#avatarButton:hover {
+    background-color: #4b4d55;
+}
+
+QLabel#avatarPreview {
+    background-color: #1e1f22;
+    border: 2px solid #404249;
+    border-radius: 40px;
+}
