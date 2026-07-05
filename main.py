@@ -4,13 +4,14 @@ import PyQt5
 from getpass import getuser
 from PIL import Image
 from os.path import expanduser
+from p2p_manager import p2pManager
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QIcon, QPixmap, QPainter, QBrush, QImageReader, QImage
+from PyQt5.QtGui import QIcon, QPixmap, QPainter, QBrush, QImage
 from PyQt5.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QMainWindow, QPushButton, QSplitter,
-    QTextEdit, QVBoxLayout, QWidget, QFileDialog
+    QTextEdit, QVBoxLayout, QWidget, QFileDialog, QDialogButtonBox, QFormLayout
 )
 
 qt_plugin_path = os.path.join(os.path.dirname(PyQt5.__file__), 'Qt5', 'plugins', 'platforms')
@@ -46,6 +47,43 @@ class MainWindow(QMainWindow):
         # Подключение
         connect_frame = QFrame()
         connect_frame.setObjectName("card")
+        self.join_frame = QFrame()
+        self.join_frame.setObjectName("card")
+        self.join_frame.setVisible(False)   # изначально скрыт
+        join_layout = QVBoxLayout(self.join_frame)
+
+        # Заголовок фрейма
+        join_title = QLabel("Параметры подключения")
+        join_title.setObjectName("sectionTitle")
+        join_layout.addWidget(join_title)
+
+        # Форма с полями
+        form_layout = QFormLayout()
+        self.join_ip_input = QLineEdit()
+        self.join_ip_input.setPlaceholderText("например, 83.234.21.109")
+        form_layout.addRow("IP-адрес хоста:", self.join_ip_input)
+
+        self.join_port_input = QLineEdit()
+        self.join_port_input.setPlaceholderText("например, 51820")
+        form_layout.addRow("Порт:", self.join_port_input)
+
+        self.join_code_input = QLineEdit()
+        self.join_code_input.setPlaceholderText("например, A3fG9k")
+        form_layout.addRow("Код сессии:", self.join_code_input)
+
+        join_layout.addLayout(form_layout)
+
+        # Кнопки: Подключиться и Закрыть
+        button_box = QDialogButtonBox()
+        self.join_connect_btn = button_box.addButton("Подключиться", QDialogButtonBox.AcceptRole)
+        self.join_cancel_btn = button_box.addButton("Закрыть", QDialogButtonBox.RejectRole)
+        join_layout.addWidget(button_box)
+
+        # Сигналы кнопок
+        self.join_cancel_btn.clicked.connect(self.hide_join_frame)
+        self.join_connect_btn.clicked.connect(self.connection)
+
+        left_layout.addWidget(self.join_frame)
         connect_layout = QVBoxLayout(connect_frame)
         connect_title = QLabel("Подключение")
         connect_title.setObjectName("sectionTitle")
@@ -53,6 +91,9 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel("Статус: ожидание")
         self.create_session_btn = QPushButton("Создать сессию")
         self.join_session_btn = QPushButton("Подключиться")
+        self.join_session_btn.clicked.connect(self.show_join_frame)
+        self.create_session_btn.clicked.connect(self.new_session)
+        
         connect_layout.addWidget(connect_title)
         connect_layout.addWidget(self.session_key_label)
         connect_layout.addWidget(self.status_label)
@@ -223,6 +264,29 @@ class MainWindow(QMainWindow):
                 self.setStyleSheet(f.read())
         except FileNotFoundError:
             print("main.css не найден")
+            
+    def show_join_frame(self):
+        self.join_ip_input.clear()
+        self.join_port_input.clear()
+        self.join_code_input.clear()
+        self.join_frame.setVisible(True)
+
+    def hide_join_frame(self):
+        self.join_frame.setVisible(False)
+        
+    def connection(self):
+        ip = self.join_ip_input.text().strip()
+        port_str = self.join_port_input.text().strip()
+        code = self.join_code_input.text().strip()
+        name = self.nickname_input.text().strip()
+        if not ip or not port_str or not code:
+            return
+        port = int(port_str)
+        self.hide_join_frame()
+        p2pManager.client(code, ip, port, name)
+        
+    def new_session(self):
+        p2pManager.start_server()
 
 
 if __name__ == "__main__":
