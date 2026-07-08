@@ -1,0 +1,1 @@
+[{"content": "Implement client connection to host and message exchange. If only one client, communication occurs between client and host. If multiple clients, host duplicates messages to others with sender name.", "priority": "high", "status": "pending"}]
