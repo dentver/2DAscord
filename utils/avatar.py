@@ -1,4 +1,7 @@
+import base64
+from io import BytesIO
 from pathlib import Path
+
 from PIL import Image
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap, QPainter, QBrush, QImage
@@ -20,29 +23,39 @@ def make_round_pixmap(pixmap: QPixmap, size: int = 75) -> QPixmap:
     return round_pixmap
 
 
-def load_avatar_from_file(file_path: str, avatar_label: QLabel, target_size: int = 75) -> bool:
-    with Image.open(file_path) as pil_image:
-        if pil_image.mode not in ("RGB", "RGBA"):
-            pil_image = pil_image.convert("RGB")
-        pil_image.thumbnail((400, 400), Image.Resampling.LANCZOS)
-        if pil_image.mode == "RGB":
-            pil_image = pil_image.convert("RGBA")
-        data = pil_image.tobytes("raw", "RGBA")
-        qimage = QImage(data, pil_image.width, pil_image.height, QImage.Format_RGBA8888)
-        pixmap = QPixmap.fromImage(qimage)
+def load_avatar_b64(file_path: str) -> str:
+    with Image.open(file_path) as img:
+        if img.mode not in ("RGB", "RGBA"):
+            img = img.convert("RGB")
+        img.thumbnail((200, 200), Image.Resampling.LANCZOS)
+        if img.mode == "RGB":
+            img = img.convert("RGBA")
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode("utf-8")
 
-    final_pixmap = pixmap.scaled(
-        target_size, target_size,
-        Qt.KeepAspectRatioByExpanding,
-        Qt.SmoothTransformation
-    )
-    round_pixmap = make_round_pixmap(final_pixmap, target_size)
+
+def b64_to_pixmap(b64: str) -> QPixmap:
+    data = base64.b64decode(b64)
+    pixmap = QPixmap()
+    pixmap.loadFromData(data, "PNG")
+    return pixmap
+
+
+def set_round_pixmap_on_label(pixmap: QPixmap, avatar_label: QLabel, size: int = 75) -> None:
+    round_pixmap = make_round_pixmap(pixmap, size)
     avatar_label.setPixmap(round_pixmap)
     avatar_label.repaint()
-    return True
 
 
-def select_avatar(parent: QWidget, avatar_label: QLabel) -> None:
+def load_from_file_and_display(file_path: str, avatar_label: QLabel) -> str:
+    b64 = load_avatar_b64(file_path)
+    pixmap = b64_to_pixmap(b64)
+    set_round_pixmap_on_label(pixmap, avatar_label)
+    return b64
+
+
+def select_avatar(parent: QWidget, avatar_label: QLabel) -> str:
     file_path, _ = QFileDialog.getOpenFileName(
         parent,
         "Выберите аватар",
@@ -50,12 +63,13 @@ def select_avatar(parent: QWidget, avatar_label: QLabel) -> None:
         "Изображения (*.png *.jpg *.jpeg);;Все файлы (*.*)"
     )
     if file_path:
-        load_avatar_from_file(file_path, avatar_label)
+        return load_from_file_and_display(file_path, avatar_label)
+    return ""
 
 
-def load_default_avatar(avatar_label: QLabel) -> None:
+def load_default_avatar(avatar_label: QLabel) -> str:
     default_path = Path("resources") / "account.png"
     if default_path.exists():
-        load_avatar_from_file(str(default_path), avatar_label)
-    else:
-        avatar_label.setText("Нет фото")
+        return load_from_file_and_display(str(default_path), avatar_label)
+    avatar_label.setText("Нет фото")
+    return ""
