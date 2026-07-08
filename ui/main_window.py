@@ -23,7 +23,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self._avatar_b64 = ""
+        self._my_name = ""
         self._is_host = False
+        self._chat_messages: list = []
 
         self.setWindowTitle("2DAscord")
         self.setWindowIcon(QIcon(str(Path("resources") / "2DAicon.png")))
@@ -242,8 +244,8 @@ class MainWindow(QMainWindow):
         self.join_session_btn.setVisible(False)
         self.end_session_btn.setVisible(True)
         self._is_host = True
-        name = self.nickname_input.text().strip() or getuser()
-        asyncio.create_task(P2PManager.start_server(name, self._avatar_b64))
+        self._my_name = self.nickname_input.text().strip() or getuser()
+        asyncio.create_task(P2PManager.start_server(self._my_name, self._avatar_b64))
 
     def _connection(self) -> None:
         ip = self.join_ip_input.text().strip()
@@ -287,13 +289,13 @@ class MainWindow(QMainWindow):
         )
 
     def _on_welcome_received(self, my_name: str, participants: list, messages: list) -> None:
+        self._my_name = my_name
         self.status_label.setText(f"Статус: подключен как {my_name}")
         self.members_list.clear()
         for p in participants:
             self._add_member(p["name"], p["avatar"])
-        self.chat_display.clear()
-        for m in messages:
-            self._append_message(m["sender"], m["avatar"], m["text"])
+        self._chat_messages = [(m["sender"], m["avatar"], m["text"]) for m in messages]
+        self._render_chat()
 
     def _on_message_received(self, sender: str, avatar_b64: str, text: str) -> None:
         self._append_message(sender, avatar_b64, text)
@@ -321,6 +323,8 @@ class MainWindow(QMainWindow):
         self.join_session_btn.setVisible(True)
         self.end_session_btn.setVisible(False)
         self._is_host = False
+        self._my_name = ""
+        self._chat_messages.clear()
         self.session_key_label.setText("Код сессии: не создана")
         self.status_label.setText("Статус: ожидание")
         self.members_list.clear()
@@ -330,19 +334,51 @@ class MainWindow(QMainWindow):
     # ── UI helpers ───────────────────────────────────────
 
     def _append_message(self, sender: str, avatar_b64: str, text: str) -> None:
-        html = '<div style="display: flex; align-items: flex-start; margin: 4px 0;">'
-        if avatar_b64:
-            html += (
-                '<img src="data:image/png;base64,{}" '
-                'width="32" height="32" '
-                'style="border-radius: 16px; margin-right: 8px; flex-shrink: 0;">'
-            ).format(avatar_b64)
-        html += (
-            '<div><b style="color: #dbdee1;">{}</b>'
-            '<span style="color: #dbdee1;"> {}</span></div>'
-            '</div>'
-        ).format(sender, text)
-        self.chat_display.insertHtml(html)
+        self._chat_messages.append((sender, avatar_b64, text))
+        self._render_chat()
+
+    def _render_chat(self) -> None:
+        parts = []
+        for sender, avatar_b64, text in self._chat_messages:
+            is_mine = sender == self._my_name
+
+            msg = '<p style="padding: 2px 0; margin: 0; text-align: {};">'.format(
+                "right" if is_mine else "left"
+            )
+
+            if not is_mine:
+                if avatar_b64:
+                    msg += (
+                        '<img src="data:image/png;base64,{}" '
+                        'width="32" height="32" '
+                        'style="border-radius: 16px; margin-right: 8px; vertical-align: middle;">'
+                    ).format(avatar_b64)
+                msg += (
+                    '<b style="color: #dbdee1;">{}</b>'
+                    '<span style="color: #dbdee1;"> {}</span>'
+                ).format(sender, text)
+            else:
+                msg += (
+                    '<b style="color: #dbdee1;">{}</b>'
+                    '<span style="color: #dbdee1;"> {}</span>'
+                ).format(sender, text)
+                if avatar_b64:
+                    msg += (
+                        '<img src="data:image/png;base64,{}" '
+                        'width="32" height="32" '
+                        'style="border-radius: 16px; margin-left: 8px; vertical-align: middle;">'
+                    ).format(avatar_b64)
+
+            msg += "</p>"
+            parts.append(msg)
+
+        html = (
+            '<html><body style="background-color: transparent; margin: 0; padding: 0;">'
+            '{}'
+            '</body></html>'
+        ).format("".join(parts))
+
+        self.chat_display.setHtml(html)
         scrollbar = self.chat_display.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
 
