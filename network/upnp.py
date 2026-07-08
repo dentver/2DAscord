@@ -71,6 +71,22 @@ class SessionCreator:
             return False
 
     @staticmethod
+    def remove_port_mapping(port: int, protocol: str) -> bool:
+        try:
+            upnp = miniupnpc.UPnP()
+            upnp.discoverdelay = 200
+            devices_count = upnp.discover()
+            if devices_count == 0:
+                return False
+            upnp.selectigd()
+            upnp.deleteportmapping(port, protocol)
+            logger.info("[UPnP] Порт %d (%s) успешно удалён", port, protocol)
+            return True
+        except Exception as e:
+            logger.warning("[UPnP] Не удалось удалить порт %d: %s", port, e)
+            return False
+
+    @staticmethod
     def open(protocol: str = "TCP") -> list:
         return [
             SessionCreator.get_room_code(),
