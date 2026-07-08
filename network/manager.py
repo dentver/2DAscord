@@ -43,7 +43,7 @@ class P2PManager:
 
         cls.signals.session_created.emit(room_code, host_ip, tcp_port)
 
-        cls._server = await asyncio.start_server(cls._handle_client, "0.0.0.0", tcp_port)
+        cls._server = await asyncio.start_server(cls._handle_client, "0.0.0.0", tcp_port, limit=1024*1024)
         cls._tcp_port = tcp_port
         await cls._server.serve_forever()
 
@@ -127,17 +127,55 @@ class P2PManager:
 
             if cmd == P2PProtocol.CMD_SEND_M:
                 text = args[0]
+                avatar = args[1] if len(args) > 1 else ""
                 sender = cls._clients[client_id]
+                current_avatar = avatar or sender.avatar
+                if avatar and avatar != sender.avatar:
+                    cls._clients[client_id] = ClientConnection(
+                        writer=sender.writer, reader=sender.reader,
+                        name=sender.name, avatar=avatar
+                    )
+                    cls.signals.participant_avatar_updated.emit(sender.name, avatar)
+                    sender = cls._clients[client_id]
 
-                msg = Message(sender=sender.name, avatar=sender.avatar, text=text)
+                new_name = args[2] if len(args) > 2 else ""
+                current_name = new_name or sender.name
+                if new_name and new_name != sender.name:
+                    old_name = sender.name
+                    cls._clients[client_id] = ClientConnection(
+                        writer=sender.writer, reader=sender.reader,
+                        name=new_name, avatar=current_avatar
+                    )
+                    cls.signals.participant_name_updated.emit(old_name, new_name)
+                    nm = P2PProtocol.encode(
+                        P2PProtocol.CMD_NAME, old_name, new_name
+                    )
+                    await cls._broadcast(nm, exclude={client_id})
+                    sender = cls._clients[client_id]
+
+                msg = Message(sender=current_name, avatar=current_avatar, text=text)
                 cls._messages.append(msg)
                 cls._messages = cls._messages[-50:]
 
                 dist = P2PProtocol.encode(
-                    P2PProtocol.CMD_DIST_M, sender.name, sender.avatar, text
+                    P2PProtocol.CMD_DIST_M, current_name, current_avatar, text
                 )
                 await cls._broadcast(dist, exclude={client_id})
-                cls.signals.message_received.emit(sender.name, sender.avatar, text)
+                cls.signals.message_received.emit(current_name, current_avatar, text)
+
+            elif cmd == P2PProtocol.CMD_AVATAR:
+                avatar = args[0] if args else ""
+                if avatar:
+                    sender = cls._clients[client_id]
+                    cls._clients[client_id] = ClientConnection(
+                        writer=sender.writer, reader=sender.reader,
+                        name=sender.name, avatar=avatar
+                    )
+                    cls.signals.participant_avatar_updated.emit(sender.name, avatar)
+                    avt = P2PProtocol.encode(
+                        P2PProtocol.CMD_AVATAR, sender.name, avatar
+                    )
+                    await cls._broadcast(avt, exclude={client_id})
 
     @classmethod
     async def _broadcast(cls, data: bytes, exclude: set = None) -> None:
@@ -154,20 +192,54 @@ class P2PManager:
                     pass
 
     @classmethod
-    async def host_send_message(cls, text: str) -> None:
+    async def host_send_message(cls, text: str, avatar: str = "", name: str = "") -> None:
         host = cls._clients.get(0)
         if not host:
             return
 
-        msg = Message(sender=host.name, avatar=host.avatar, text=text)
+        avatar = avatar or host.avatar
+        if avatar != host.avatar:
+            cls._clients[0] = ClientConnection(
+                writer=host.writer, reader=host.reader,
+                name=host.name, avatar=avatar
+            )
+            cls.signals.participant_avatar_updated.emit(host.name, avatar)
+            host = cls._clients[0]
+
+        current_name = name or host.name
+        if name and name != host.name:
+            old_name = host.name
+            cls._clients[0] = ClientConnection(
+                writer=host.writer, reader=host.reader,
+                name=name, avatar=host.avatar
+            )
+            cls.signals.participant_name_updated.emit(old_name, name)
+            nm = P2PProtocol.encode(P2PProtocol.CMD_NAME, old_name, name)
+            await cls._broadcast(nm, exclude={0})
+            host = cls._clients[0]
+
+        msg = Message(sender=current_name, avatar=avatar, text=text)
         cls._messages.append(msg)
         cls._messages = cls._messages[-50:]
 
         dist = P2PProtocol.encode(
-            P2PProtocol.CMD_DIST_M, host.name, host.avatar, text
+            P2PProtocol.CMD_DIST_M, current_name, avatar, text
         )
         await cls._broadcast(dist, exclude={0})
-        cls.signals.message_received.emit(host.name, host.avatar, text)
+        cls.signals.message_received.emit(current_name, avatar, text)
+
+    @classmethod
+    async def host_update_avatar(cls, avatar: str) -> None:
+        host = cls._clients.get(0)
+        if not host or avatar == host.avatar:
+            return
+        cls._clients[0] = ClientConnection(
+            writer=host.writer, reader=host.reader,
+            name=host.name, avatar=avatar
+        )
+        cls.signals.participant_avatar_updated.emit(host.name, avatar)
+        avt = P2PProtocol.encode(P2PProtocol.CMD_AVATAR, host.name, avatar)
+        await cls._broadcast(avt, exclude={0})
 
     @classmethod
     async def stop_server(cls) -> None:
@@ -207,7 +279,7 @@ class P2PManager:
     ) -> None:
         writer = None
         try:
-            reader, writer = await asyncio.open_connection(host_ip, host_port)
+            reader, writer = await asyncio.open_connection(host_ip, host_port, limit=1024*1024)
 
             hello = P2PProtocol.encode(
                 P2PProtocol.CMD_HELLO, room_code, name, avatar
@@ -268,20 +340,59 @@ class P2PManager:
                 elif cmd == P2PProtocol.CMD_PAR_LEAVE:
                     name = args[0]
                     cls.signals.participant_left.emit(name)
+                elif cmd == P2PProtocol.CMD_AVATAR:
+                    sender, avatar_b64 = args
+                    cls.signals.participant_avatar_updated.emit(sender, avatar_b64)
+                elif cmd == P2PProtocol.CMD_NAME:
+                    old_name, new_name = args
+                    cls.signals.participant_name_updated.emit(old_name, new_name)
         except Exception:
             pass
         finally:
             cls.signals.disconnected.emit()
 
     @classmethod
-    async def client_send_message(cls, text: str) -> None:
+    async def client_send_message(cls, text: str, avatar: str = "", name: str = "") -> None:
         if cls._client_writer:
             try:
-                msg = P2PProtocol.encode(P2PProtocol.CMD_SEND_M, text)
+                current_avatar = avatar or cls._client_avatar
+                if current_avatar != cls._client_avatar:
+                    cls._client_avatar = current_avatar
+                current_name = name or cls._client_name
+                if name and name != cls._client_name:
+                    old_name = cls._client_name
+                    cls._client_name = name
+                    cls.signals.participant_name_updated.emit(old_name, name)
+                    msg = P2PProtocol.encode(P2PProtocol.CMD_SEND_M, text, current_avatar, name)
+                else:
+                    msg = P2PProtocol.encode(P2PProtocol.CMD_SEND_M, text, current_avatar)
                 cls._client_writer.write(msg)
                 await cls._client_writer.drain()
                 cls.signals.message_received.emit(
-                    cls._client_name, cls._client_avatar, text
+                    current_name, current_avatar, text
                 )
             except Exception:
                 cls.signals.connection_failed.emit("Ошибка отправки сообщения")
+
+    @classmethod
+    async def client_update_avatar(cls, avatar: str) -> None:
+        if cls._client_writer and avatar and avatar != cls._client_avatar:
+            cls._client_avatar = avatar
+            msg = P2PProtocol.encode(P2PProtocol.CMD_AVATAR, avatar)
+            cls._client_writer.write(msg)
+            await cls._client_writer.drain()
+
+    @classmethod
+    async def disconnect(cls) -> None:
+        if cls._client_writer:
+            try:
+                cls._client_writer.close()
+                await cls._client_writer.wait_closed()
+            except Exception:
+                pass
+        cls._client_reader = None
+        cls._client_writer = None
+        cls._client_name = ""
+        cls._client_avatar = ""
+        cls._room_code = ""
+        cls.signals.disconnected.emit()

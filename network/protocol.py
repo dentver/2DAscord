@@ -8,6 +8,8 @@ class P2PProtocol:
     CMD_DIST_M = "DIST_M"
     CMD_PAR_JOIN = "PAR_JOIN"
     CMD_PAR_LEAVE = "PAR_LEAVE"
+    CMD_AVATAR = "AVATAR"
+    CMD_NAME = "NAME"
 
     @staticmethod
     def encode(cmd: str, *args) -> bytes:

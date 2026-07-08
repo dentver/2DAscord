@@ -7,6 +7,8 @@ class P2PSignals(QObject):
     message_received = pyqtSignal(str, str, str)
     participant_joined = pyqtSignal(str, str)
     participant_left = pyqtSignal(str)
+    participant_avatar_updated = pyqtSignal(str, str)
+    participant_name_updated = pyqtSignal(str, str)
     connection_failed = pyqtSignal(str)
     disconnected = pyqtSignal()
     session_ended = pyqtSignal()

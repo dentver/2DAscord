@@ -3,7 +3,7 @@ from io import BytesIO
 from pathlib import Path
 
 from PIL import Image
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QBuffer
 from PyQt5.QtGui import QPixmap, QPainter, QBrush, QImage
 from PyQt5.QtWidgets import QLabel, QWidget, QFileDialog
 
@@ -40,6 +40,17 @@ def b64_to_pixmap(b64: str) -> QPixmap:
     pixmap = QPixmap()
     pixmap.loadFromData(data, "PNG")
     return pixmap
+
+
+def make_round_b64(b64: str, size: int = 32) -> str:
+    pixmap = b64_to_pixmap(b64)
+    round_pixmap = make_round_pixmap(pixmap, size)
+    buf = QBuffer()
+    buf.open(QBuffer.ReadWrite)
+    round_pixmap.save(buf, "PNG")
+    b64_result = base64.b64encode(buf.data().data()).decode("utf-8")
+    buf.close()
+    return b64_result
 
 
 def set_round_pixmap_on_label(pixmap: QPixmap, avatar_label: QLabel, size: int = 75) -> None:
