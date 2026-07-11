@@ -1,3 +1,4 @@
+import sys
 import base64
 from io import BytesIO
 from pathlib import Path
@@ -79,7 +80,11 @@ def select_avatar(parent: QWidget, avatar_label: QLabel) -> str:
 
 
 def load_default_avatar(avatar_label: QLabel) -> str:
-    default_path = Path("resources") / "account.png"
+    if getattr(sys, 'frozen', False):
+        base = Path(sys._MEIPASS)
+    else:
+        base = Path.cwd()
+    default_path = base / "resources" / "account.png"
     if default_path.exists():
         return load_from_file_and_display(str(default_path), avatar_label)
     avatar_label.setText("Нет фото")

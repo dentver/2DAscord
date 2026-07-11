@@ -1,4 +1,5 @@
 import asyncio
+import sys
 import logging
 from pathlib import Path
 from getpass import getuser
@@ -44,7 +45,11 @@ class MainWindow(QMainWindow):
         self._chat_messages: list = []
 
         self.setWindowTitle("2DAscord")
-        self.setWindowIcon(QIcon(str(Path("resources") / "2DAicon.png")))
+        if getattr(sys, 'frozen', False):
+            icon_path = str(Path(sys._MEIPASS) / "resources" / "2DAicon.png")
+        else:
+            icon_path = str(Path("resources") / "2DAicon.png")
+        self.setWindowIcon(QIcon(icon_path))
         self.resize(1400, 900)
 
         central_widget = QWidget()
@@ -293,7 +298,11 @@ class MainWindow(QMainWindow):
     # ── Стили ────────────────────────────────────────────
 
     def _load_styles(self) -> None:
-        css_path = Path("resources") / "main.css"
+        if getattr(sys, 'frozen', False):
+            base = Path(sys._MEIPASS)
+        else:
+            base = Path.cwd()
+        css_path = base / "resources" / "main.css"
         try:
             self.setStyleSheet(css_path.read_text(encoding="utf-8"))
         except FileNotFoundError:
