@@ -1,11 +1,11 @@
-import logging
 import random
 import string
 import socket
 import requests
 import miniupnpc
 
-logger = logging.getLogger(__name__)
+
+# ── UPnP и сессии ───────────────────────────────────────
 
 
 class SessionCreator:
@@ -51,23 +51,21 @@ class SessionCreator:
 
             try:
                 upnp.deleteportmapping(port, protocol)
-            except Exception as e:
-                logger.warning("[UPnP] Старое правило не найдено или не удалено: %s", e)
+            except Exception:
+                pass
 
             result = upnp.addportmapping(port, protocol, local_ip, port, description, "")
 
             if result:
-                logger.info("[UPnP] Порт %d (%s) успешно проброшен на %s:%d", port, protocol, local_ip, port)
                 try:
                     upnp.getspecificportmapping(port, protocol)
                 except Exception:
-                    logger.warning("[UPnP] Не удалось проверить правило, но оно, вероятно, создано.")
+                    pass
                 return True
             else:
                 return False
 
-        except Exception as e:
-            logger.error("[UPnP] Ошибка: %s", e)
+        except Exception:
             return False
 
     @staticmethod
@@ -80,10 +78,8 @@ class SessionCreator:
                 return False
             upnp.selectigd()
             upnp.deleteportmapping(port, protocol)
-            logger.info("[UPnP] Порт %d (%s) успешно удалён", port, protocol)
             return True
-        except Exception as e:
-            logger.warning("[UPnP] Не удалось удалить порт %d: %s", port, e)
+        except Exception:
             return False
 
     @staticmethod

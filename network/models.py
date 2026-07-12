@@ -2,6 +2,9 @@ from dataclasses import dataclass, field, asdict
 from typing import Optional
 
 
+# ── Модели данных ───────────────────────────────────────
+
+
 @dataclass
 class Message:
     sender: str

@@ -9,6 +9,9 @@ from PyQt5.QtGui import QPixmap, QPainter, QBrush, QImage
 from PyQt5.QtWidgets import QLabel, QWidget, QFileDialog
 
 
+# ── Работа с аватарами ──────────────────────────────────
+
+
 def make_round_pixmap(pixmap: QPixmap, size: int = 75) -> QPixmap:
     if pixmap.isNull():
         return pixmap

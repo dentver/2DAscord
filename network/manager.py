@@ -1,16 +1,13 @@
 import asyncio
 import json
-import logging
 
 from .protocol import P2PProtocol
 from .upnp import SessionCreator
 from .signals import P2PSignals
 from .models import ClientConnection, Message, ParticipantInfo
 
-logger = logging.getLogger(__name__)
-
-
 class P2PManager:
+    # ── Общие атрибуты ────────────────────────────────────
     signals = P2PSignals()
 
     _clients: dict[int, ClientConnection] = {}
@@ -100,8 +97,8 @@ class P2PManager:
 
         except asyncio.CancelledError:
             pass
-        except Exception as e:
-            logger.exception("Ошибка handle_client: %s", e)
+        except Exception:
+            pass
         finally:
             if client_id and client_id in cls._clients:
                 client = cls._clients.pop(client_id)
@@ -243,8 +240,6 @@ class P2PManager:
 
     @classmethod
     async def stop_server(cls) -> None:
-        logger.info("Завершение сессии...")
-
         for cid, client in list(cls._clients.items()):
             if cid != 0 and client.writer:
                 try:
@@ -268,7 +263,6 @@ class P2PManager:
         cls._next_id = 1
 
         cls.signals.session_ended.emit()
-        logger.info("Сессия завершена")
 
     # ── Client ───────────────────────────────────────────
 
@@ -279,7 +273,10 @@ class P2PManager:
     ) -> None:
         writer = None
         try:
-            reader, writer = await asyncio.open_connection(host_ip, host_port, limit=1024*1024)
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(host_ip, host_port, limit=1024*1024),
+                timeout=10
+            )
 
             hello = P2PProtocol.encode(
                 P2PProtocol.CMD_HELLO, room_code, name, avatar
@@ -306,6 +303,11 @@ class P2PManager:
                 cls.signals.welcome_received.emit(name, participants, messages)
 
                 await cls._client_receive_loop(reader)
+            else:
+                cls.signals.connection_failed.emit(
+                    f"Неизвестный ответ от хоста: {cmd}"
+                )
+                return
 
         except (OSError, asyncio.TimeoutError) as e:
             cls.signals.connection_failed.emit(str(e))
@@ -325,7 +327,7 @@ class P2PManager:
     async def _client_receive_loop(cls, reader) -> None:
         try:
             while True:
-                data = await reader.readline()
+            data = await asyncio.wait_for(reader.readline(), timeout=10)
                 if not data:
                     break
 

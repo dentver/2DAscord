@@ -1,6 +1,9 @@
 import json
 
 
+# ── Протокол P2P ────────────────────────────────────────
+
+
 class P2PProtocol:
     CMD_HELLO = "HELLO"
     CMD_WELCOME = "WELCOME"

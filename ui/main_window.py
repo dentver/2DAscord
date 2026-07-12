@@ -1,6 +1,5 @@
 import asyncio
 import sys
-import logging
 from pathlib import Path
 from getpass import getuser
 
@@ -17,8 +16,6 @@ from utils.avatar import (
     select_avatar, load_default_avatar, b64_to_pixmap, make_round_pixmap,
     make_round_b64
 )
-
-logger = logging.getLogger(__name__)
 
 
 class ClickableLabel(QLabel):
@@ -306,7 +303,7 @@ class MainWindow(QMainWindow):
         try:
             self.setStyleSheet(css_path.read_text(encoding="utf-8"))
         except FileNotFoundError:
-            logger.warning("main.css не найден")
+            pass
 
     # ── Фрейм подключения ────────────────────────────────
 
@@ -347,7 +344,8 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Статус: неверный формат IP/Port")
             return
         self._room_code = code
-        self._hide_join_frame()
+        self.join_connect_btn.setEnabled(False)
+        self.join_connect_btn.setText("Подключение...")
         self._is_host = False
         self.status_label.setText("Статус: подключение...")
         try:
@@ -424,6 +422,7 @@ class MainWindow(QMainWindow):
         self._room_code = P2PManager._room_code or self._room_code
         self.session_key_label.setText(f"Код сессии: {self._room_code}")
         self.status_label.setText("Статус: подключение выполнено")
+        self._hide_join_frame()
         self.create_session_btn.setVisible(False)
         self.join_session_btn.setVisible(False)
         self.disconnect_btn.setVisible(True)
@@ -461,8 +460,11 @@ class MainWindow(QMainWindow):
             self._my_name = new_name
 
     def _on_connection_failed(self, error: str) -> None:
+        self.join_connect_btn.setEnabled(True)
+        self.join_connect_btn.setText("Подключиться")
         self.status_label.setText("Статус: не удалось подключиться")
         self._room_code = self.join_code_input.text().strip() or self._room_code
+        self._show_notification(f"Ошибка подключения: {error}", 5000)
 
     def _on_disconnected(self) -> None:
         if not self._is_host:

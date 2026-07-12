@@ -6,4 +6,4 @@ dist/
 build/
 *.exe
 *.spec
-logs/
+instruction.txt

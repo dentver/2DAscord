@@ -1,6 +1,9 @@
 from PyQt5.QtCore import QObject, pyqtSignal
 
 
+# ── Сигналы P2P ─────────────────────────────────────────
+
+
 class P2PSignals(QObject):
     session_created = pyqtSignal(str, str, int)
     welcome_received = pyqtSignal(str, list, list)
