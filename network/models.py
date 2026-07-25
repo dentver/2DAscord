@@ -1,8 +1,7 @@
-from dataclasses import dataclass, field, asdict
-from typing import Optional
+from dataclasses import dataclass
 
 
-# ── Модели данных ───────────────────────────────────────
+# ── Data Models ───────────────────────────────────────
 
 
 @dataclass
@@ -10,12 +9,6 @@ class Message:
     sender: str
     avatar: str
     text: str
-
-
-@dataclass
-class ParticipantInfo:
-    name: str
-    avatar: str
 
 
 class ClientConnection:

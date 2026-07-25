@@ -13,6 +13,9 @@ class P2PProtocol:
     CMD_PAR_LEAVE = "PAR_LEAVE"
     CMD_AVATAR = "AVATAR"
     CMD_NAME = "NAME"
+    CMD_VOICE_PORT = "VOICE_PORT"
+    CMD_VOICE_READY = "VOICE_READY"
+    CMD_PING = "PING"
 
     @staticmethod
     def encode(cmd: str, *args) -> bytes:

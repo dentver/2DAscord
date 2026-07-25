@@ -1,3 +1,4 @@
+import asyncio
 import random
 import string
 import socket
@@ -16,57 +17,58 @@ class SessionCreator:
 
     @staticmethod
     def get_host_ip() -> str:
-        return requests.get("https://api.ipify.org").text.strip()
+        from .logger import step_start, step_ok, step_fail
+        step_start("HOST_IP", "fetching external IP")
+        try:
+            r = requests.get("https://api.ipify.org", timeout=3)
+            ip = r.text.strip()
+            step_ok("HOST_IP", f"got {ip}")
+            return ip
+        except Exception as e:
+            step_fail("HOST_IP", str(e))
+            return ""
 
     @staticmethod
-    def init_port(protocol: str) -> int:
-        port_start = 49152
-        port_end = 65535
-        for i in range(port_start, port_end):
-            if SessionCreator.local_check_port(i):
-                if SessionCreator.router_check_port(i, protocol):
+    async def get_host_ip_async() -> str:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, SessionCreator.get_host_ip)
+
+    @staticmethod
+    def find_local_port() -> int:
+        from .logger import step_start, step_ok, step_fail
+        step_start("INIT_PORT", "finding free port")
+        for i in range(49152, 65535):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                try:
+                    s.bind(("", i))
+                    step_ok("INIT_PORT", f"found port {i}")
                     return i
+                except OSError:
+                    continue
+        step_fail("INIT_PORT", "no port available")
+        return 0
 
     @staticmethod
-    def local_check_port(port: int) -> bool:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            try:
-                s.bind(("", port))
-                return True
-            except OSError:
-                return False
-
-    @staticmethod
-    def router_check_port(port: int, protocol: str, description: str = "2DAscord", lease_duration: int = 3600) -> bool:
+    def _do_upnp(port: int, protocol: str) -> bool:
         try:
             upnp = miniupnpc.UPnP()
             upnp.discoverdelay = 200
-
             devices_count = upnp.discover()
             if devices_count == 0:
                 return False
-
             upnp.selectigd()
-            local_ip = upnp.lanaddr
-
             try:
                 upnp.deleteportmapping(port, protocol)
             except Exception:
                 pass
-
-            result = upnp.addportmapping(port, protocol, local_ip, port, description, "")
-
-            if result:
-                try:
-                    upnp.getspecificportmapping(port, protocol)
-                except Exception:
-                    pass
-                return True
-            else:
-                return False
-
+            return upnp.addportmapping(port, protocol, upnp.lanaddr, port, "2DAscord", "")
         except Exception:
             return False
+
+    @staticmethod
+    async def setup_upnp(port: int, protocol: str = "TCP") -> bool:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, SessionCreator._do_upnp, port, protocol)
 
     @staticmethod
     def remove_port_mapping(port: int, protocol: str) -> bool:
@@ -81,11 +83,3 @@ class SessionCreator:
             return True
         except Exception:
             return False
-
-    @staticmethod
-    def open(protocol: str = "TCP") -> list:
-        return [
-            SessionCreator.get_room_code(),
-            SessionCreator.get_host_ip(),
-            SessionCreator.init_port(protocol)
-        ]

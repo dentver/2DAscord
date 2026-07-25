@@ -10,21 +10,26 @@
 - **Аватары** — загрузка PNG/JPG, автоматическое скругление
 - **Никнеймы** — смена ника в реальном времени, синхронизация с участниками
 - **Список участников** — онлайн-статус, аватары, имена
-- **Голосовая связь** — микрофон и демонстрация экрана (заготовка)
+- **Голосовая связь** — микрофон (P2P UDP, Opus-подобный фреймворк)
+- **Системные уведомления** — всплывающие подсказки в центре экрана
+- **Копирование адресов** — клик по IP/LAN/коду сессии копирует в буфер
 - **Тёмная тема** — стилизованный интерфейс в стиле Discord
 - **Кроссплатформенность** — Windows, Linux, macOS
 
 ## Технологии
 
-| Компонент      | Технология     |
-|----------------|----------------|
-| GUI            | PyQt5          |
-| Асинхронность  | asyncio + qasync |
-| Сеть           | asyncio TCP    |
-| UPnP           | miniupnpc      |
-| Изображения    | Pillow         |
-| Сборка         | PyInstaller    |
-| Установщик     | Inno Setup     |
+| Компонент       | Технология      |
+|-----------------|-----------------|
+| GUI             | PyQt5           |
+| Асинхронность   | asyncio + qasync |
+| Сеть            | asyncio TCP + UDP |
+| Шифрование      | TLS (самоподписанный сертификат) |
+| Криптография    | cryptography (RSA-2048) |
+| UPnP            | miniupnpc       |
+| Аудио           | sounddevice + PortAudio |
+| Изображения     | Pillow          |
+| Сборка          | PyInstaller     |
+| Установщик      | Inno Setup      |
 
 ## Запуск из исходного кода
 
@@ -41,21 +46,29 @@ python main.py
 
 ```
 2DAscord/
-├── main.py                  # Точка входа
+├── main.py                     # Точка входа, глобальный хук исключений
 ├── network/
-│   ├── manager.py           # P2PManager — сервер/клиент
-│   ├── protocol.py          # P2PProtocol — кодирование команд
-│   ├── signals.py           # P2PSignals — сигналы Qt
-│   ├── models.py            # Модели данных
-│   └── upnp.py              # SessionCreator — UPnP, комнаты, IP
+│   ├── manager.py              # P2PManager — фасад (делегирует Host/Client/Voice)
+│   ├── host.py                 # P2PHost — серверная логика (TCP, клиенты, heartbeat)
+│   ├── client.py               # P2PClient — клиентская логика (подключение, приём)
+│   ├── protocol.py             # P2PProtocol — кодирование/декодирование команд
+│   ├── signals.py              # P2PSignals — сигналы Qt
+│   ├── models.py               # Модели данных
+│   ├── upnp.py                 # SessionCreator — UPnP, комнаты, IP
+│   ├── ssl_utils.py            # Генерация RSA-ключа и самоподписанного сертификата
+│   ├── voice.py                # VoiceEngine — захват/воспроизведение аудио, VAD
+│   ├── voice_controller.py     # VoiceController — управление голосовой сессией
+│   ├── voice_protocol.py       # VoiceProtocol — упаковка аудиофреймов
+│   ├── voice_transport.py      # VoiceTransport — UDP-транспорт
+│   └── logger.py               # Пошаговое логирование в файл
 ├── ui/
-│   └── main_window.py       # MainWindow — интерфейс
+│   └── main_window.py          # MainWindow — интерфейс
 ├── utils/
-│   └── avatar.py            # Работа с аватарами
+│   └── avatar.py               # Работа с аватарами
 ├── resources/
-│   ├── main.css             # Стили
-│   ├── 2DAicon.png          # Иконка
-│   └── account.png          # Аватар по умолчанию
+│   ├── main.css                # Стили
+│   ├── 2DAicon.png             # Иконка
+│   └── account.png             # Аватар по умолчанию
 └── docs/
-    └── api.md               # API-документация
+    └── api.md                  # API-документация
 ```

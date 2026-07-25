@@ -1,4 +1,5 @@
 import asyncio
+import html
 import sys
 from pathlib import Path
 from getpass import getuser
@@ -8,7 +9,7 @@ from PyQt5.QtGui import QIcon, QCursor
 from PyQt5.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMainWindow, QPushButton, QSplitter,
-    QTextEdit, QVBoxLayout, QWidget, QDialogButtonBox, QFormLayout
+    QTextEdit, QVBoxLayout, QWidget, QDialogButtonBox
 )
 
 from network.manager import P2PManager
@@ -40,6 +41,7 @@ class MainWindow(QMainWindow):
         self._host_address = ""
         self._room_code = ""
         self._chat_messages: list = []
+        self._round_avatar_cache: dict = {}
 
         self.setWindowTitle("2DAscord")
         if getattr(sys, 'frozen', False):
@@ -153,12 +155,10 @@ class MainWindow(QMainWindow):
         media_title = QLabel("Голосовая связь")
         media_title.setObjectName("sectionTitle")
         self.mic_btn = QPushButton("Микрофон")
-        self.screen_btn = QPushButton("Демонстрация")
         self.mic_btn.setCheckable(True)
-        self.screen_btn.setCheckable(True)
+        self.mic_btn.setEnabled(False)
         media_layout.addWidget(media_title)
         media_layout.addWidget(self.mic_btn)
-        media_layout.addWidget(self.screen_btn)
 
         # Профиль
         profile_frame = QFrame()
@@ -235,6 +235,7 @@ class MainWindow(QMainWindow):
 
         # ── Сигналы P2P ───────────────────────────────────
         P2PManager.signals.session_created.connect(self._on_session_created)
+        P2PManager.signals.external_ip_ready.connect(self._on_external_ip_ready)
         P2PManager.signals.welcome_received.connect(self._on_welcome_received)
         P2PManager.signals.participant_avatar_updated.connect(self._on_participant_avatar_updated)
         P2PManager.signals.participant_name_updated.connect(self._on_participant_name_updated)
@@ -244,6 +245,10 @@ class MainWindow(QMainWindow):
         P2PManager.signals.connection_failed.connect(self._on_connection_failed)
         P2PManager.signals.disconnected.connect(self._on_disconnected)
         P2PManager.signals.session_ended.connect(self._on_session_ended)
+        P2PManager.signals.voice_state_changed.connect(self._on_voice_state_changed)
+
+        # ── Микрофон ──────────────────────────────
+        self.mic_btn.toggled.connect(self._on_mic_toggled)
 
         # ── Копирование ───────────────────────────
         self.session_key_label.clicked.connect(self._copy_room_code)
@@ -254,6 +259,28 @@ class MainWindow(QMainWindow):
         # ── Кнопка отправки ───────────────────────────────
         self.send_btn.clicked.connect(self._send_message)
         self.message_input.returnPressed.connect(self._send_message)
+
+    def closeEvent(self, event):
+        if getattr(self, '_closing', False):
+            super().closeEvent(event)
+            return
+        self._closing = True
+        event.ignore()
+        asyncio.create_task(self._cleanup_and_close())
+
+    async def _cleanup_and_close(self):
+        from network.logger import step_start, step_exc
+        step_start("CLOSE", "cleanup and close")
+        try:
+            if self._is_host:
+                await P2PManager.stop_server()
+            elif P2PManager.is_connected():
+                await P2PManager.disconnect()
+            else:
+                await P2PManager.cleanup_voice()
+        except Exception as e:
+            step_exc("CLOSE", e)
+        self.close()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -312,6 +339,8 @@ class MainWindow(QMainWindow):
         self.connect_frame.setVisible(False)
 
     def _hide_join_frame(self) -> None:
+        self.join_connect_btn.setEnabled(True)
+        self.join_connect_btn.setText("Подключиться")
         self.join_frame.setVisible(False)
         self.connect_frame.setVisible(True)
 
@@ -323,18 +352,41 @@ class MainWindow(QMainWindow):
             self._avatar_b64 = result
             if self._is_host:
                 asyncio.create_task(P2PManager.host_update_avatar(result))
-            elif P2PManager._client_writer:
+            elif P2PManager.is_connected():
                 asyncio.create_task(P2PManager.client_update_avatar(result))
 
     # ── P2P ──────────────────────────────────────────────
 
     def _new_session(self) -> None:
+        from network.logger import step_start, step_ok
+        step_start("NEW_SESSION", "create clicked")
         self.create_session_btn.setVisible(False)
         self.join_session_btn.setVisible(False)
-        self.end_session_btn.setVisible(True)
+        self.status_label.setText("Статус: создание безопасного подключения...")
         self._is_host = True
         self._my_name = self.nickname_input.text().strip() or getuser()
-        asyncio.create_task(P2PManager.start_server(self._my_name, self._avatar_b64))
+        step_ok("NEW_SESSION", f"name={self._my_name}")
+        asyncio.create_task(self._do_new_session())
+
+    async def _do_new_session(self) -> None:
+        from network.logger import step_start, step_ok, step_fail
+        step_start("DO_NEW_SESSION", "calling start_server")
+        try:
+            await P2PManager.start_server(self._my_name, self._avatar_b64)
+            step_ok("DO_NEW_SESSION", "start_server returned")
+        except Exception as e:
+            step_fail("DO_NEW_SESSION", f"exception: {e}")
+            self._on_host_error(str(e))
+
+    def _on_host_error(self, error: str) -> None:
+        from network.logger import step_start, step_fail
+        step_fail("HOST_ERROR", error)
+        self._is_host = False
+        self.create_session_btn.setVisible(True)
+        self.join_session_btn.setVisible(True)
+        self.end_session_btn.setVisible(False)
+        self.status_label.setText("Статус: нет активной сессии")
+        self._show_notification(f"Ошибка: {error}", 5000)
 
     def _connection(self) -> None:
         raw = self.join_input.text().strip()
@@ -401,27 +453,40 @@ class MainWindow(QMainWindow):
     def _on_session_created(self, room_code: str, host_ip: str, port: int) -> None:
         self.session_key_label.setText(f"Код сессии: {room_code}")
         self._room_code = room_code
-        lam_ip = self._get_lan_ip()
-        self._host_global = f"{host_ip}:{port}"
-        self._host_lan = f"{lam_ip}:{port}"
+        lan_ip = self._get_lan_ip()
+        self._host_port = port
+        self._host_lan = f"{lan_ip}:{port}"
         self._host_local = f"127.0.0.1:{port}"
-        self.host_global_label.setText(f"внешний: {self._host_global}")
         self.host_lan_label.setText(f"LAN: {self._host_lan}")
         self.host_local_label.setText(f"локальный: {self._host_local}")
-        self.host_global_label.setVisible(True)
         self.host_lan_label.setVisible(True)
         self.host_local_label.setVisible(True)
+        if host_ip:
+            self._host_global = f"{host_ip}:{port}"
+            self.host_global_label.setText(f"внешний: {self._host_global}")
+            self.host_global_label.setVisible(True)
+        else:
+            self._host_global = ""
+            self.host_global_label.setText("внешний: получаем...")
+            self.host_global_label.setVisible(True)
         self.status_label.setText("Статус: сессия активна")
+        self.mic_btn.setEnabled(True)
         self._add_member(
             self.nickname_input.text().strip() or getuser(),
             self._avatar_b64
         )
 
+    def _on_external_ip_ready(self, host_ip: str) -> None:
+        port = getattr(self, '_host_port', 0)
+        self._host_global = f"{host_ip}:{port}"
+        self.host_global_label.setText(f"внешний: {self._host_global}")
+
     def _on_welcome_received(self, my_name: str, participants: list, messages: list) -> None:
         self._my_name = my_name
-        self._room_code = P2PManager._room_code or self._room_code
+        self._room_code = P2PManager.get_room_code() or self._room_code
         self.session_key_label.setText(f"Код сессии: {self._room_code}")
         self.status_label.setText("Статус: подключение выполнено")
+        self.mic_btn.setEnabled(True)
         self._hide_join_frame()
         self.create_session_btn.setVisible(False)
         self.join_session_btn.setVisible(False)
@@ -451,7 +516,11 @@ class MainWindow(QMainWindow):
         self._append_system_message(f"участник {name} покинул сессию")
 
     def _on_participant_avatar_updated(self, name: str, avatar_b64: str) -> None:
-        pass
+        self._update_member_avatar(name, avatar_b64)
+        for i, (s, a, t) in enumerate(self._chat_messages):
+            if s == name:
+                self._chat_messages[i] = (s, avatar_b64, t)
+        self._render_chat()
 
     def _on_participant_name_updated(self, old_name: str, new_name: str) -> None:
         self._update_chat_sender_names(old_name, new_name)
@@ -488,7 +557,30 @@ class MainWindow(QMainWindow):
         self.host_global_label.setVisible(False)
         self.host_lan_label.setVisible(False)
         self.host_local_label.setVisible(False)
+        self.mic_btn.setEnabled(False)
+        self.mic_btn.setChecked(False)
+        self.join_connect_btn.setEnabled(True)
+        self.join_connect_btn.setText("Подключиться")
+        self._round_avatar_cache.clear()
         self._show_notification("Сессия завершена")
+
+    # ── Voice ────────────────────────────────────────────
+
+    def _on_mic_toggled(self, checked: bool):
+        if checked:
+            asyncio.create_task(P2PManager.enable_voice())
+        else:
+            asyncio.create_task(P2PManager.disable_voice())
+
+    def _on_voice_state_changed(self, active: bool):
+        self.mic_btn.setChecked(active)
+        self.mic_btn.setText(
+            "Выкл микрофон" if active else "Микрофон"
+        )
+        if active:
+            self._show_notification("Микрофон включён", 2000)
+        else:
+            self._show_notification("Микрофон выключен", 2000)
 
     # ── UI helpers ───────────────────────────────────────
 
@@ -502,9 +594,18 @@ class MainWindow(QMainWindow):
     def _append_system_message(self, text: str) -> None:
         self._append_message("", "", text)
 
+    def _get_rounded_avatar(self, b64: str, size: int = 32) -> str:
+        if len(self._round_avatar_cache) > 20:
+            self._round_avatar_cache.clear()
+        if b64 not in self._round_avatar_cache:
+            self._round_avatar_cache[b64] = make_round_b64(b64, size)
+        return self._round_avatar_cache[b64]
+
     def _render_chat(self) -> None:
         parts = []
         for sender, avatar_b64, text in self._chat_messages:
+            escaped_sender = html.escape(sender)
+            escaped_text = html.escape(text)
             is_system = not sender and not avatar_b64
             is_mine = sender == self._my_name
 
@@ -512,7 +613,7 @@ class MainWindow(QMainWindow):
                 msg = (
                     '<p style="padding: 2px 0; margin: 0; text-align: center; '
                     'font-style: italic; color: #888;">{}</p>'
-                ).format(text)
+                ).format(escaped_text)
                 parts.append(msg)
                 continue
 
@@ -522,7 +623,7 @@ class MainWindow(QMainWindow):
 
             if not is_mine:
                 if avatar_b64:
-                    round_b64 = make_round_b64(avatar_b64, 32)
+                    round_b64 = self._get_rounded_avatar(avatar_b64, 32)
                     msg += (
                         '<img src="data:image/png;base64,{}" '
                         'width="32" height="32" '
@@ -531,14 +632,14 @@ class MainWindow(QMainWindow):
                 msg += (
                     '<b style="color: #dbdee1;">{}</b>'
                     '<span style="color: #dbdee1;"> {}</span>'
-                ).format(sender, text)
+                ).format(escaped_sender, escaped_text)
             else:
                 msg += (
                     '<b style="color: #dbdee1;">{}</b>'
                     '<span style="color: #dbdee1;"> {}</span>'
-                ).format(sender, text)
+                ).format(escaped_sender, escaped_text)
                 if avatar_b64:
-                    round_b64 = make_round_b64(avatar_b64, 32)
+                    round_b64 = self._get_rounded_avatar(avatar_b64, 32)
                     msg += (
                         '<img src="data:image/png;base64,{}" '
                         'width="32" height="32" '
